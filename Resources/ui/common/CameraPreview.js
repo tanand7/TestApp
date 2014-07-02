@@ -1,6 +1,10 @@
 var CameraPreview = function(cameraImage, callbackObj){
 	var platformHeight = Ti.Platform.displayCaps.platformHeight; 
 	var platformWidth = Ti.Platform.displayCaps.platformWidth; 
+	var resetCompleted = false;
+	
+	var CROP_VIEW_HEIGHT = 160; 
+	var CROP_VIEW_WIDTH = 320; 
 	
 	var _previewWindow = Ti.UI.createWindow({
 		width	: Ti.UI.FILL,
@@ -9,26 +13,69 @@ var CameraPreview = function(cameraImage, callbackObj){
 		backgroundColor : '#000',
 	});
 	
-	var _previewView = Ti.UI.createView({
-		width	: Ti.UI.FILL,
-		height	: platformHeight-70,
-		top		: 0
+	var _previewView = Ti.UI.createScrollView({
+        showVerticalScrollIndicator:false,
+        showHorizontalScrollIndicator:false,
+        width:'100%',
+        height:'100%',
+		contentWidth:'auto',
+        contentHeight:'auto',
+        backgroundColor:'#000000',
+        minZoomScale:1,  
+        maxZoomScale:5, 
+        zoomScale:1,
+        oldZoom:1
 	});
+
+	_previewWindow.add(_previewView);
 	
 	//Image view holds the preview
 	var _previewImage = Ti.UI.createImageView({
-		height	: Ti.UI.SIZE,
-		width	: Ti.UI.SIZE,
+		width	: platformWidth,
 		image	: cameraImage,
 	});
+	
+	_previewView.add(_previewImage);
+	
+	var _cropScreenContainer = Ti.UI.createView({
+		height	: platformHeight,
+		touchEnabled : false,
+		width	: platformWidth,
+		layout	: 'vertical'
+	});
+	
+	_previewWindow.add(_cropScreenContainer);
+	
+	var _viewPositions = _getPositions();
+	var _topView = Ti.UI.createView({
+		backgroundColor	: '#000000',
+		height	: _viewPositions.topHeight,
+		top		: 0,
+		opacity : 0.6,
+		touchEnabled : false,
+	});
+	
+	_cropScreenContainer.add(_topView);
 	
 	//Crop view is used to crop the image displayed
 	var _cropView = Ti.UI.createView({
 		borderColor	: '#ffffff',
-		borderWidth : 2,
-		width		: 320,
-		height		: 160
+		borderWidth : 1,
+		width		: CROP_VIEW_WIDTH,
+		height		: CROP_VIEW_HEIGHT,
+		touchEnabled : false,
+		top			: 0
 	});
+	_cropScreenContainer.add(_cropView);
+	
+	var _bottomView = Ti.UI.createView({
+		backgroundColor	: '#000000',
+		height	: _viewPositions.bottomHeight,
+		touchEnabled : false,
+		top		: 0,
+		opacity : 0.6
+	});
+	_cropScreenContainer.add(_bottomView);
 	
 	//Bottom bar containing the camera buttons and cancel button
 	var _bottomBar = Ti.UI.createView({
@@ -39,108 +86,107 @@ var CameraPreview = function(cameraImage, callbackObj){
 	});
 	
 	//Retake button	
-	var _retakeButton = Ti.UI.createButton({
-		title	: 'Retake',
+	var _retakeButton = Ti.UI.createLabel({
+		text	: 'Cancel',
 		color	:'#fff',
 		left 	: '3%',
 	});
 	//Button to chose the photo
-	var _chooseButton = Ti.UI.createButton({
-		title	: 'Use Photo',
+	var _chooseButton = Ti.UI.createLabel({
+		text	: 'Choose',
 		color	:'#fff',
 		right 	: '3%',
 	});
 	
-	var pinching = false;
-	var previousY = null;
-	var olt = Titanium.UI.create2DMatrix();
-	
-	_previewView.add(_previewImage);
-	_previewView.add(_cropView);
 	_bottomBar.add(_retakeButton);
 	_bottomBar.add(_chooseButton);
 	_previewWindow.add(_bottomBar);
 	_previewWindow.add(_previewView);
 	
+	 _retakeButton.addEventListener('click', _retakePhoto);
+	 _chooseButton.addEventListener('click', _onUsePhoto);
+	 _previewWindow.addEventListener('open', _setImageProperties);
+	_previewView.addEventListener('pinch', _zoomImage);
+    _previewView.addEventListener('dragstart', _resetContentHeight);
+    _previewView.addEventListener('touchend', _resetZoomScale);
+	 
 	_previewWindow.open();
 	
-	_retakeButton.addEventListener('click', _retakePhoto);
-	_chooseButton.addEventListener('click', _onUsePhoto);
-	_cropView.addEventListener('touchmove', _onMoveCropView);
-	_cropView.addEventListener('touchstart', _setInitialPoints);
-	_cropView.addEventListener('pinch', _scaleImage);
-	_cropView.addEventListener('touchend', function(){
-		pinching = false;
-	});
+	/**
+	 * Used to set the zoom scales when opening the window
+	 * Sets the minimum zoom scale with respect to the image height
+	 */
+	function _setImageProperties(e){
+		Ti.Media.hideCamera();
+		var imageHeight = _previewImage.rect.height;
+	 	_previewView.contentHeight = imageHeight + (_cropView.rect.y * 2);
+	 	var _py = _cropView.rect.y;
+	 	var _deltaY = (imageHeight - CROP_VIEW_HEIGHT)/2;
+	 	_previewView.top = _previewView.rect.y-_deltaY; 
+	}
 	
+	function _resetContentHeight(e){
+		if(!resetCompleted){
+			_previewView.top = undefined;
+			_previewView.contentHeight = _previewImage.rect.height + (_cropView.rect.y * 2);
+			resetCompleted = true;
+		}
+	}
+	
+	/**
+	 * Used to re open the gallery
+	 */
 	function _retakePhoto(){
 		_previewWindow.fireEvent('showCamera');
 	}
 	
+	/**
+	 * used to zoom the scroll view
+ 	 * @param {Object} e
+	 */
+	function _zoomImage(e){
+	    if (e.scale>1){
+	        if (e.scale>_previewView.zoomScale){
+	                _previewView.zoomScale=e.scale;
+	        } else {
+	                _previewView.zoomScale=_previewView.oldZoom + (e.scale-1);
+	        }
+	    } else if (e.scale<_previewView.zoomScale){
+	    	_previewView.zoomScale=_previewView.zoomScale - (1-e.scale);
+	    }
+    }
+    
+    /**
+     * Used to reset the zoom scale
+     */
+    function _resetZoomScale(e){
+        _previewView.oldZoom=_previewView.zoomScale;
+    }
+    
+    /**
+     * Used to crop the image in the required resolution and retruns to the success callback
+     */
 	function _onUsePhoto(){
 		var ImageFactory = require('ti.imagefactory');
-		var newBlob = ImageFactory.imageAsCropped(_previewImage.image, {width:610, height:320, x :_cropView.rect.x, y: _cropView.rect.y });
+		var _selectedImage = _previewView.toImage();
+		var newBlob = ImageFactory.imageAsCropped(_selectedImage, {width:_cropView.rect.width, height:_cropView.rect.height, x :0, y: _cropView.rect.y });
 		callbackObj.success(newBlob);
 		_previewWindow.close();
 	}
-	function _onMoveCropView(event){
-		if (pinching){
-        	return;
-        }
-		var deltaY = event.y - previousY;
-
-	    olt = olt.translate(0, deltaY);
-	    _cropView.animate({
-	        transform : olt,
-	        duration : 100
-	    });
+	
+	/**
+	 * Returns the top of shadow view used above and below the crop view
+	 */
+	function _getPositions(){
+		var totalHeight = platformHeight;
+		var centerPoint = platformHeight/2;
+		var cropTop = centerPoint - (CROP_VIEW_HEIGHT/2);
+		var cropBottom = centerPoint + (CROP_VIEW_HEIGHT/2);
+		var topHeight = (platformHeight-CROP_VIEW_HEIGHT)/2;
+		return {topHeight: topHeight, bottomHeight : topHeight};
 	}
 	
-	function _setInitialPoints(event){
-		previousY = event.y;
-	}
-	
-	function _scaleImage(event){
-	    pinching = true;
-	}
 	return _previewWindow;
 };
 
 module.exports = CameraPreview;
-
-/**********************************/
-// var heightOfPreview = _previewView.rect.height;
-// var heightOfCropView = _cropView.rect.height;
-// var heightOfImageView = _previewImage.rect.height;
-// 
-// var cropViewTop = _cropView.rect.y;						//Top point of crop view
-// var previewImageTop = _previewImage.rect.y;				//Top point of image view
-// var cropViewBottom = cropViewTop + heightOfCropView;	//Bottom y of cropview
-// var previewImageBottom = previewImageTop + heightOfImageView;	//Bottom y of cropview
-
-// if(previousY == null){
-			// previousY = event.y;
-// } else {
-	// if(previousY > event.y){
-		// distance = previousY - event.y;
-		// //Moving up
-		// if(_cropView.rect.y > 0){
-			// _cropView.animate({top: _cropView.top + distance , duration: 500}, function(){
-				// _cropView.top += distance;
-			// });
-		// }
-	// } else {
-		// distance = event.y - previousY;
-		// //Moving down
-		// if(heightOfCropView + cropViewTop > heightOfPreview){
-			// _cropView.top = 0;
-		// } else {
-			// _cropView.animate({top: _cropView.top - distance, duration: 500}, function(){
-				// _cropView.top -= distance;
-			// });
-		// }
-	// }
-	// previousY = event.y;
-// }
-
-/****************/
