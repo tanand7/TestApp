@@ -5,6 +5,7 @@ var CameraPreview = function(cameraImage, callbackObj){
 	
 	var CROP_VIEW_HEIGHT = 160; 
 	var CROP_VIEW_WIDTH = 320; 
+	var BOTTOM_VIEW_HEIGHT = 60; 
 	
 	var _previewWindow = Ti.UI.createWindow({
 		width	: Ti.UI.FILL,
@@ -22,7 +23,7 @@ var CameraPreview = function(cameraImage, callbackObj){
         contentHeight:'auto',
         backgroundColor:'#000000',
         minZoomScale:1,  
-        maxZoomScale:5, 
+        maxZoomScale:5,	//Update the image scaling from 5 to 1 
         zoomScale:1,
         oldZoom:1
 	});
@@ -41,10 +42,9 @@ var CameraPreview = function(cameraImage, callbackObj){
 		height	: platformHeight,
 		touchEnabled : false,
 		width	: platformWidth,
-		layout	: 'vertical'
+		layout	: 'vertical',
+		zIndex	: 1000
 	});
-	
-	_previewWindow.add(_cropScreenContainer);
 	
 	var _viewPositions = _getPositions();
 	var _topView = Ti.UI.createView({
@@ -80,8 +80,9 @@ var CameraPreview = function(cameraImage, callbackObj){
 	//Bottom bar containing the camera buttons and cancel button
 	var _bottomBar = Ti.UI.createView({
 		width	: Ti.UI.FILL,
-		height	: 70,
+		height	: BOTTOM_VIEW_HEIGHT,
 		bottom	: 0,
+		zIndex	: 1001,
 		backgroundColor : 'black'
 	});
 	
@@ -90,24 +91,26 @@ var CameraPreview = function(cameraImage, callbackObj){
 		text	: 'Cancel',
 		color	:'#fff',
 		left 	: '3%',
+		zIndex	: 1001,
 	});
 	//Button to chose the photo
 	var _chooseButton = Ti.UI.createLabel({
 		text	: 'Choose',
 		color	:'#fff',
 		right 	: '3%',
+		zIndex	: 1001,
 	});
 	
 	_bottomBar.add(_retakeButton);
 	_bottomBar.add(_chooseButton);
 	_previewWindow.add(_bottomBar);
 	_previewWindow.add(_previewView);
-	
+	_previewWindow.add(_cropScreenContainer);
+		
 	 _retakeButton.addEventListener('click', _retakePhoto);
 	 _chooseButton.addEventListener('click', _onUsePhoto);
 	 _previewWindow.addEventListener('open', _setImageProperties);
 	_previewView.addEventListener('pinch', _zoomImage);
-    _previewView.addEventListener('dragstart', _resetContentHeight);
     _previewView.addEventListener('touchend', _resetZoomScale);
 	 
 	_previewWindow.open();
@@ -117,12 +120,11 @@ var CameraPreview = function(cameraImage, callbackObj){
 	 * Sets the minimum zoom scale with respect to the image height
 	 */
 	function _setImageProperties(e){
-		Ti.Media.hideCamera();
 		var imageHeight = _previewImage.rect.height;
+	 	var _topPoint = (imageHeight-CROP_VIEW_HEIGHT)/2;
 	 	_previewView.contentHeight = imageHeight + (_cropView.rect.y * 2);
-	 	var _py = _cropView.rect.y;
-	 	var _deltaY = (imageHeight - CROP_VIEW_HEIGHT)/2;
-	 	_previewView.top = _previewView.rect.y-_deltaY; 
+	 	_previewView.scrollTo(0,_topPoint);
+		Ti.Media.hideCamera();
 	}
 	
 	function _resetContentHeight(e){
@@ -168,8 +170,8 @@ var CameraPreview = function(cameraImage, callbackObj){
      */
 	function _onUsePhoto(){
 		var ImageFactory = require('ti.imagefactory');
-		var _selectedImage = _previewView.toImage();
-		var newBlob = ImageFactory.imageAsCropped(_selectedImage, {width:_cropView.rect.width, height:_cropView.rect.height, x :0, y: _cropView.rect.y });
+		var _selectedImage = _previewView.toImage(null, true);
+		var newBlob = ImageFactory.imageAsCropped(_selectedImage, {width:(_cropView.rect.width*2), height:(_cropView.rect.height*2), x :0, y: (_cropView.rect.y*2) });
 		callbackObj.success(newBlob);
 		_previewWindow.close();
 	}
